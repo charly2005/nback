@@ -37,12 +37,12 @@ class NBack extends Game {
       },
       number_of_trials: {
         type: "integer",
-        default: 75,
+        default: 25,
         description: "Total number of letters presented.",
       },  
       target_percentage: {
         type: "number",
-        default: 0.5,
+        default: 0.33,
         description: "Percentage of trials that are matches.",
       },
     };
