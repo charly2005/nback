@@ -16261,7 +16261,7 @@ class NBack extends Game {
       },
       inter_trial_interval_ms: {
         type: "number",
-        default: 500,
+        default: 1e3,
         description: "Blank time between trials."
       },
       number_of_trials: {
@@ -16281,7 +16281,6 @@ class NBack extends Game {
       n_level: { type: "integer", description: "The N level." },
       is_target: { type: "boolean", description: "Was this a match?" },
       response_correct: { type: "boolean", description: "Did the user respond correctly?" },
-      // FIX: Change type to allow null values
       response_time_ms: {
         type: ["number", "null"],
         description: "Time taken to respond."
@@ -16290,9 +16289,8 @@ class NBack extends Game {
     const options = {
       name: "N-Back",
       id: "nback",
-      // FIX 1: Added required publishUuid
-      publishUuid: "",
-      version: "1.0.0",
+      publishUuid: "nback-game-v1",
+      version: "1.0.4",
       shortDescription: "2-Back Memory Task",
       longDescription: "Click the button if the current letter matches the one 2 steps ago.",
       width: 400,
@@ -16311,6 +16309,7 @@ class NBack extends Game {
   async initialize() {
     await super.initialize();
     const game = this;
+    const trialResults = [];
     const nLevel = game.getParameter("n_level");
     const totalTrials = game.getParameter("number_of_trials");
     const targetPct = game.getParameter("target_percentage");
@@ -16353,7 +16352,6 @@ Tap the BOTTOM circle if the current letter matches the letter from ${nLevel} st
       fontSize: 24,
       fontColor: WebColors.Black,
       position: { x: 200, y: 400 }
-      // Center
     });
     waitScene.addChild(getReadyLabel);
     waitScene.onAppear(() => {
@@ -16408,58 +16406,85 @@ Tap the BOTTOM circle if the current letter matches the letter from ${nLevel} st
       });
       presentationScene.addChild(responseButton);
       let responseMade = false;
-      let hideTimer;
-      let endTimer;
-      const handleEndTrial = (responded) => {
-        if (responseMade) return;
-        responseMade = true;
-        clearTimeout(hideTimer);
-        clearTimeout(endTimer);
-        Timer.stop("responseTime");
-        const rt = Timer.elapsed("responseTime");
-        Timer.remove("responseTime");
+      let recordedRt = null;
+      setTimeout(() => {
+        stimulusCircle.alpha = 0;
+      }, stimDuration);
+      setTimeout(() => {
+        if (!responseMade) {
+          Timer.stop("responseTime");
+        }
         let isCorrect = false;
         if (config.isTarget) {
-          isCorrect = responded;
+          isCorrect = responseMade;
         } else {
-          isCorrect = !responded;
+          isCorrect = !responseMade;
         }
+        trialResults.push({ isTarget: config.isTarget, correct: isCorrect });
         game.addTrialData("trial_index", idx);
         game.addTrialData("presented_letter", config.letter);
         game.addTrialData("n_level", nLevel);
         game.addTrialData("is_target", config.isTarget);
         game.addTrialData("response_correct", isCorrect);
-        game.addTrialData("response_time_ms", responded ? rt : null);
+        game.addTrialData("response_time_ms", recordedRt);
         presentationScene.removeAllChildren();
         game.trialComplete();
         game.presentScene(waitScene);
-      };
-      hideTimer = setTimeout(() => {
-        stimulusCircle.alpha = 0;
-      }, stimDuration);
-      endTimer = setTimeout(() => {
-        handleEndTrial(false);
       }, trialDuration);
       responseButton.onTapDown(() => {
-        responseButton.backgroundColor = WebColors.Green;
-        handleEndTrial(true);
+        if (responseMade) return;
+        responseMade = true;
+        Timer.stop("responseTime");
+        recordedRt = Timer.elapsed("responseTime");
+        Timer.remove("responseTime");
+        if (config.isTarget) {
+          responseButton.backgroundColor = WebColors.Green;
+        } else {
+          responseButton.backgroundColor = WebColors.Red;
+        }
+        responseButton.isUserInteractionEnabled = false;
       });
     });
     const doneScene = new Scene();
     game.addScene(doneScene);
-    const doneText = new Label({
-      text: "Task Complete",
+    const statsLabel = new Label({
+      text: "",
+      fontSize: 16,
+      fontColor: WebColors.Black,
       position: { x: 200, y: 400 }
     });
-    doneScene.addChild(doneText);
+    doneScene.addChild(statsLabel);
     doneScene.onAppear(() => {
+      const total = trialResults.length;
+      const targets = trialResults.filter((t) => t.isTarget).length;
+      const nonTargets = total - targets;
+      const hits = trialResults.filter((t) => t.isTarget && t.correct).length;
+      const misses = trialResults.filter((t) => t.isTarget && !t.correct).length;
+      const falseAlarms = trialResults.filter((t) => !t.isTarget && !t.correct).length;
+      const hitRate = targets > 0 ? Math.round(hits / targets * 100) : 0;
+      const missRate = targets > 0 ? Math.round(misses / targets * 100) : 0;
+      const faRate = nonTargets > 0 ? Math.round(falseAlarms / nonTargets * 100) : 0;
+      const text = `There were ${total} trials in total in this block
+
+Total trials that had a match: ${targets}
+Total trials that had no match: ${nonTargets}
+
+Number of correctly matched items: ${hits}
+Number of missed items: ${misses}
+Number of false alarms: ${falseAlarms}
+
+Percentage correct matches: ${hitRate}%
+Percentage missed items: ${missRate}%
+Percentage false alarms: ${faRate}%
+`;
+      statsLabel.text = text;
       setTimeout(() => {
         if (window.parent) {
           console.log("Sending NBACK_COMPLETE");
           window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
         }
         game.end();
-      }, 1500);
+      }, 45e3);
     });
   }
 }
@@ -16470,9 +16495,7 @@ urlParams.forEach((value, key) => {
   params[key] = value;
 });
 activity.setParameters(params);
-const session = new Session({
-  activities: [activity]
-});
+const session = new Session({ activities: [activity] });
 session.onActivityData((ev) => {
   const dataObj = ev.data;
   const trials = dataObj.trials;
@@ -16490,13 +16513,9 @@ session.onActivityData((ev) => {
     if (window.parent) {
       window.parent.postMessage({
         type: "NBACK_DATA",
-        // Unique ID for this game
         acc: accuracy.toFixed(2),
         details: JSON.stringify(simplifiedTrials)
-        // The JSON requested
       }, "*");
-      console.log(simplifiedTrials);
-      console.log(accuracy);
     }
   }
 });

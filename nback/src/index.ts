@@ -32,14 +32,14 @@ class NBack extends Game {
       },
       inter_trial_interval_ms: {
         type: "number",
-        default: 500,
+        default: 1000,
         description: "Blank time between trials.",
       },
       number_of_trials: {
         type: "integer",
         default: 25,
         description: "Total number of letters presented.",
-      },  
+      },
       target_percentage: {
         type: "number",
         default: 0.33,
@@ -53,7 +53,6 @@ class NBack extends Game {
       n_level: { type: "integer", description: "The N level." },
       is_target: { type: "boolean", description: "Was this a match?" },
       response_correct: { type: "boolean", description: "Did the user respond correctly?" },
-      // FIX: Change type to allow null values
       response_time_ms: { 
         type: ["number", "null"], 
         description: "Time taken to respond." 
@@ -63,9 +62,8 @@ class NBack extends Game {
     const options: GameOptions = {
       name: "N-Back",
       id: "nback",
-      // FIX 1: Added required publishUuid
-      publishUuid: "",
-      version: "1.0.0",
+      publishUuid: "nback-game-v1",
+      version: "1.0.4",
       shortDescription: "2-Back Memory Task",
       longDescription: "Click the button if the current letter matches the one 2 steps ago.",
       width: 400,
@@ -93,6 +91,12 @@ class NBack extends Game {
       letter: string;
       isTarget: boolean;
     }
+    
+    interface SimpleResult {
+      isTarget: boolean;
+      correct: boolean;
+    }
+    const trialResults: SimpleResult[] = [];
 
     const nLevel = game.getParameter<number>("n_level");
     const totalTrials = game.getParameter<number>("number_of_trials");
@@ -105,12 +109,10 @@ class NBack extends Game {
       let letter = "";
       let isTarget = false;
 
-      // Logic to force targets based on N-level
       if (i >= nLevel && Math.random() < targetPct) {
           isTarget = true;
           letter = trialConfigs[i - nLevel].letter;
       } else {
-          // Pick a random letter that is NOT a target
           do {
             letter = lettersPool[Math.floor(Math.random() * lettersPool.length)];
           } while (i >= nLevel && letter === trialConfigs[i - nLevel].letter);
@@ -137,24 +139,22 @@ class NBack extends Game {
     const countdownScene = new CountdownScene({ milliseconds: 3000, text: "" });
     game.addScene(countdownScene);
 
-    // Wait Scene (The "Preparation" Scene between trials)
+    // Wait Scene
     const waitScene = new Scene();
     game.addScene(waitScene);
     const getReadyLabel = new Label({
         text: "Get Ready",
         fontSize: 24,
         fontColor: WebColors.Black,
-        position: { x: 200, y: 400 }, // Center
+        position: { x: 200, y: 400 },
     });
     waitScene.addChild(getReadyLabel);  
     waitScene.onAppear(() => {
-        // If we are done, jump straight to doneScene
         if (game.trialIndex >= totalTrials) {
             game.presentScene(doneScene);
             return;
         }
 
-        // Otherwise, wait for the inter-trial interval, then go to presentation
         waitScene.run(
             Action.sequence([
                 Action.wait({
@@ -175,7 +175,6 @@ class NBack extends Game {
 
     presentationScene.onAppear(() => {
       const idx = game.trialIndex;
-      // Safety check for end of trials
       if (idx >= trialConfigs.length) { 
         game.presentScene(doneScene);
         return;
@@ -187,7 +186,7 @@ class NBack extends Game {
 
       Timer.startNew("responseTime");
 
-      // --- CIRCLE 1: The Stimulus (Top) ---
+      // Top Circle (Stimulus)
       const stimulusCircle = new Button({
         text: config.letter,
         fontSize: 40,
@@ -200,7 +199,7 @@ class NBack extends Game {
       });
       presentationScene.addChild(stimulusCircle);
 
-      // --- CIRCLE 2: The Response Button (Bottom) ---
+      // Bottom Circle (Response)
       const responseButton = new Button({
         text: "MATCH",
         fontColor: WebColors.White,
@@ -213,107 +212,147 @@ class NBack extends Game {
       presentationScene.addChild(responseButton);
 
       let responseMade = false;
+      let recordedRt: number | null = null;
       let hideTimer: any;
       let endTimer: any;
-
-      const handleEndTrial = (responded: boolean) => {
-        if (responseMade) return;
-        responseMade = true;
-
-        clearTimeout(hideTimer);
-        clearTimeout(endTimer);
-
-        Timer.stop("responseTime");
-        const rt = Timer.elapsed("responseTime");
-        Timer.remove("responseTime");
-
-        // Determine correctness
-        let isCorrect = false;
-        if (config.isTarget) {
-            isCorrect = responded; 
-        } else {
-            isCorrect = !responded;
-        }
-
-        game.addTrialData("trial_index", idx);
-        game.addTrialData("presented_letter", config.letter);
-        game.addTrialData("n_level", nLevel);
-        game.addTrialData("is_target", config.isTarget);
-        game.addTrialData("response_correct", isCorrect);
-        game.addTrialData("response_time_ms", responded ? rt : null);
-
-        presentationScene.removeAllChildren();
-        game.trialComplete();
-
-        // Loop back to the Wait Scene
-        game.presentScene(waitScene);
-      };
 
       // 1. TIMEOUT: Hide the stimulus letter after X ms
       hideTimer = setTimeout(() => {
         stimulusCircle.alpha = 0; 
       }, stimDuration);
 
-      // 2. TIMEOUT: End trial after full duration
+      // 2. TIMEOUT: End trial after FULL duration
+      // This is the ONLY place that calls trialComplete()
       endTimer = setTimeout(() => {
-        handleEndTrial(false);
+        
+        // Stop timer if it's still running (i.e. if user did nothing)
+        if (!responseMade) {
+            Timer.stop("responseTime");
+        }
+
+        // Determine correctness
+        let isCorrect = false;
+        if (config.isTarget) {
+            isCorrect = responseMade; // Target + Click = Correct
+        } else {
+            isCorrect = !responseMade; // No Target + No Click = Correct
+        }
+
+        // Save Data
+        trialResults.push({ isTarget: config.isTarget, correct: isCorrect });
+        game.addTrialData("trial_index", idx);
+        game.addTrialData("presented_letter", config.letter);
+        game.addTrialData("n_level", nLevel);
+        game.addTrialData("is_target", config.isTarget);
+        game.addTrialData("response_correct", isCorrect);
+        game.addTrialData("response_time_ms", recordedRt); // will be null if no response
+
+        presentationScene.removeAllChildren();
+        game.trialComplete();
+
+        // Loop back to the Wait Scene
+        game.presentScene(waitScene);
+
       }, trialDuration);
 
       // 3. INTERACTION: Handle user click
       responseButton.onTapDown(() => {
-        responseButton.backgroundColor = WebColors.Green; // Visual feedback
-        handleEndTrial(true);
+        // Prevent double taps
+        if (responseMade) return;
+        responseMade = true;
+
+        // Capture RT immediately
+        Timer.stop("responseTime");
+        recordedRt = Timer.elapsed("responseTime");
+        Timer.remove("responseTime");
+
+        // Visual Feedback Logic
+        if (config.isTarget) {
+            // Correct Hit -> Green
+            responseButton.backgroundColor = WebColors.Green;
+        } else {
+            // False Alarm -> Red
+            responseButton.backgroundColor = WebColors.Red;
+        }
+        
+        // Disable button so they can't click again, 
+        // BUT do NOT advance scene. We just wait for endTimer.
+        responseButton.isUserInteractionEnabled = false;
       });
     });
 
-    // Done Scene
+    // --- Done Scene ---
     const doneScene = new Scene();
     game.addScene(doneScene);
     
-    const doneText = new Label({ 
-        text: "Task Complete", 
-        position: { x: 200, y: 400 } 
+    const statsLabel = new Label({ 
+        text: "", 
+        fontSize: 16,
+        fontColor: WebColors.Black,
+        position: { x: 200, y: 400 },
     });
-    doneScene.addChild(doneText);
+    doneScene.addChild(statsLabel);
 
-    // AUTOMATION: Instead of a button, we run this when the scene appears
     doneScene.onAppear(() => {
-        // Wait 1.5 seconds so they see "Task Complete", then finish
+        // Stats Calculation
+        const total = trialResults.length;
+        const targets = trialResults.filter(t => t.isTarget).length;
+        const nonTargets = total - targets;
+        const hits = trialResults.filter(t => t.isTarget && t.correct).length;
+        const misses = trialResults.filter(t => t.isTarget && !t.correct).length;
+        const falseAlarms = trialResults.filter(t => !t.isTarget && !t.correct).length;
+
+        const hitRate = targets > 0 ? Math.round((hits / targets) * 100) : 0;
+        const missRate = targets > 0 ? Math.round((misses / targets) * 100) : 0;
+        const faRate = nonTargets > 0 ? Math.round((falseAlarms / nonTargets) * 100) : 0;
+
+        const text = 
+`There were ${total} trials in total in this block
+
+Total trials that had a match: ${targets}
+Total trials that had no match: ${nonTargets}
+
+Number of correctly matched items: ${hits}
+Number of missed items: ${misses}
+Number of false alarms: ${falseAlarms}
+
+Percentage correct matches: ${hitRate}%
+Percentage missed items: ${missRate}%
+Percentage false alarms: ${faRate}%
+`;
+
+        statsLabel.text = text;
+
+        // Wait 15 seconds, then finish
         setTimeout(() => {
             if (window.parent) {
                 console.log("Sending NBACK_COMPLETE");
                 window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
             }
             game.end();
-        }, 1500);
+        }, 45000); 
     });
   }
 }
 
 // --- Initialize and Run ---
 const activity = new NBack();
-
 const urlParams = new URLSearchParams(window.location.search);
 const params: any = {};
-urlParams.forEach((value, key) => {
-  params[key] = value;
-});
+urlParams.forEach((value, key) => { params[key] = value; });
 activity.setParameters(params);
 
-const session = new Session({
-  activities: [activity],
-});
+const session = new Session({ activities: [activity] });
+
 session.onActivityData((ev) => {
   const dataObj = ev.data as any;
-  const trials = dataObj.trials; // The array of raw trial data
+  const trials = dataObj.trials;
   const config = ev.activityConfiguration as any;
+  
   if (trials && trials.length >= config.number_of_trials) {
-    // Calculate simple accuracy for the parent wrapper
     const correctCount = trials.filter((t: any) => t.response_correct === true).length;
     const accuracy = (correctCount / trials.length) * 100;
 
-    // Create a simplified list if you want, or just send 'trials' directly.
-    // Here we map it to ensure numbers are rounded and clean.
     const simplifiedTrials = trials.map((t: any) => ({
       trial_index: t.trial_index,
       letter: t.presented_letter,
@@ -324,15 +363,14 @@ session.onActivityData((ev) => {
 
     if (window.parent) {
       window.parent.postMessage({
-          type: "NBACK_DATA", // Unique ID for this game
+          type: "NBACK_DATA",
           acc: accuracy.toFixed(2),
-          details: JSON.stringify(simplifiedTrials) // The JSON requested
+          details: JSON.stringify(simplifiedTrials)
       }, "*");
-      console.log(simplifiedTrials)
-      console.log(accuracy)
     }
   }
 });
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (window as unknown as any).m2c2kitSession = session;
 
