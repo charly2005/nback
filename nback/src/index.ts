@@ -27,12 +27,12 @@ class NBack extends Game {
       },
       trial_duration_ms: {
         type: "number",
-        default: 2000,
+        default: 2500,
         description: "Total duration of one trial (stimulus + wait for input).",
       },
       inter_trial_interval_ms: {
         type: "number",
-        default: 1000,
+        default: 0,
         description: "Blank time between trials.",
       },
       number_of_trials: {
