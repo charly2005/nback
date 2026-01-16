@@ -16266,7 +16266,7 @@ class NBack extends Game {
       },
       number_of_trials: {
         type: "integer",
-        default: 20,
+        default: 75,
         description: "Total number of letters presented."
       },
       target_percentage: {
@@ -16314,7 +16314,7 @@ class NBack extends Game {
     const nLevel = game.getParameter("n_level");
     const totalTrials = game.getParameter("number_of_trials");
     const targetPct = game.getParameter("target_percentage");
-    const lettersPool = ["A", "B", "C", "D", "E", "H", "K", "L", "M", "O", "P", "R", "S", "T"];
+    const lettersPool = ["A", "B", "C", "D", "E", "H", "I", "K", "L", "M", "O", "P", "R", "S", "T"];
     const trialConfigs = [];
     for (let i = 0; i < totalTrials; i++) {
       let letter = "";
