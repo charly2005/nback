@@ -16489,7 +16489,7 @@ session.onActivityData((ev) => {
     }));
     if (window.parent) {
       window.parent.postMessage({
-        type: "NBACK_COMPLETE",
+        type: "NBACK_DATA",
         // Unique ID for this game
         acc: accuracy.toFixed(2),
         details: JSON.stringify(simplifiedTrials)
