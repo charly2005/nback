@@ -275,15 +275,18 @@ class NBack extends Game {
         position: { x: 200, y: 400 } 
     });
     doneScene.addChild(doneText);
-    
-    const okBtn = new Button({ text: "OK", position: { x: 200, y: 600 } });
-    okBtn.onTapDown(() => {
-        if (window.parent) {
-            window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
-        }
-        game.end();
+
+    // AUTOMATION: Instead of a button, we run this when the scene appears
+    doneScene.onAppear(() => {
+        // Wait 1.5 seconds so they see "Task Complete", then finish
+        setTimeout(() => {
+            if (window.parent) {
+                console.log("Sending NBACK_COMPLETE");
+                window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
+            }
+            game.end();
+        }, 1500);
     });
-    doneScene.addChild(okBtn);
   }
 }
 

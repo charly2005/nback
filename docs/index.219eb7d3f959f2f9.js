@@ -16452,14 +16452,15 @@ Tap the BOTTOM circle if the current letter matches the letter from ${nLevel} st
       position: { x: 200, y: 400 }
     });
     doneScene.addChild(doneText);
-    const okBtn = new Button({ text: "OK", position: { x: 200, y: 600 } });
-    okBtn.onTapDown(() => {
-      if (window.parent) {
-        window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
-      }
-      game.end();
+    doneScene.onAppear(() => {
+      setTimeout(() => {
+        if (window.parent) {
+          console.log("Sending NBACK_COMPLETE");
+          window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
+        }
+        game.end();
+      }, 1500);
     });
-    doneScene.addChild(okBtn);
   }
 }
 const activity = new NBack();
