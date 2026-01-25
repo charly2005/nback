@@ -331,7 +331,7 @@ Percentage false alarms: ${faRate}%
                 window.parent.postMessage({ type: "NBACK_COMPLETE" }, "*");
             }
             game.end();
-        }, 45000);  
+        }, 15000);  
     });
   }
 }
