@@ -16266,7 +16266,7 @@ class NBack extends Game {
       },
       number_of_trials: {
         type: "integer",
-        default: 25,
+        default: 3,
         description: "Total number of letters presented."
       },
       target_percentage: {
@@ -16495,6 +16495,7 @@ urlParams.forEach((value, key) => {
   params[key] = value;
 });
 activity.setParameters(params);
+const currentRound = urlParams.get("round") || "1";
 const session = new Session({ activities: [activity] });
 session.onActivityData((ev) => {
   const dataObj = ev.data;
@@ -16512,7 +16513,7 @@ session.onActivityData((ev) => {
     }));
     if (window.parent) {
       window.parent.postMessage({
-        type: "NBACK_DATA",
+        type: `NBACK_DATA${currentRound}`,
         acc: accuracy.toFixed(2),
         details: JSON.stringify(simplifiedTrials)
       }, "*");
